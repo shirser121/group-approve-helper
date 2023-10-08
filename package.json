@@ -1,0 +1,14 @@
+{
+  "name": "group-approve-helper",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "whatsapp-web.js": "github:alechkos/whatsapp-web.js#grp-memb-req"
+  }
+}
