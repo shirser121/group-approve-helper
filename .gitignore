@@ -2,3 +2,5 @@
 /.idea/
 group-approve-helper.iml
 package-lock.json
+/.wwebjs_cache/
+/.wwebjs_auth/
