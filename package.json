@@ -9,6 +9,8 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "locate-app": "^2.1.0",
+    "qrcode-terminal": "^0.12.0",
     "whatsapp-web.js": "github:alechkos/whatsapp-web.js#grp-memb-req"
   }
 }
