@@ -4,3 +4,7 @@ group-approve-helper.iml
 package-lock.json
 /.wwebjs_cache/
 /.wwebjs_auth/
+/pnpm-lock.yaml
+/files/credentials.json
+/files/token.json
+/test.js

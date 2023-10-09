@@ -9,7 +9,6 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "google-auth-library": "^9.1.0",
     "googleapis": "^126.0.1",
     "locate-app": "^2.1.0",
     "qrcode-terminal": "^0.12.0",
