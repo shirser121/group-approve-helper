@@ -2,15 +2,15 @@ const {Client, LocalAuth} = require('whatsapp-web.js');
 const {locateChrome} = require('locate-app');
 const qrcode = require('qrcode-terminal');
 const fs = require('fs');
+const {addToWaitingList, addUser, getAllVolunteers} = require('./sheets-manegment');
 
-const messageBase = fs.readFileSync('./message.txt', 'utf8');
-const vulentirs = [
-	{
-		name: 'NAME',
-		phone: '+972 *****'
-	}
-]
+const messageBase = fs.readFileSync('./files/message.txt', 'utf8');
+const groupsIds = JSON.parse(fs.readFileSync('./files/groupsIds.json', 'utf8')).groupIds;
 const counter = 0;
+let volunteers;
+getAllVolunteers().then((newVolunteers) => {
+	volunteers = newVolunteers;
+});
 
 async function start() {
 	const client = new Client({
@@ -41,20 +41,28 @@ async function start() {
 	});
 
 	client.on('message_create', async (message) => {
-		console.log('message', message);
 		handle_message(client, message).then();
 	});
 
 	client.on('group_membership_request', async (request) => {
+		if (!groupsIds.includes(request.chatId)) {
+			return;
+		}
 		console.log('group_membership_request', request);
 		const {chatId, timestamp, author} = request;
 		handle_membership_request(client, chatId, timestamp, author).then();
 	});
 
 	client.on('group_join', async (request) => {
+		if (!groupsIds.includes(request.chatId)) {
+			return;
+		}
+
 		console.log('group_join', request);
-		const {chatId, timestamp, author} = request;
-		handle_group_join(client, chatId, timestamp, author).then();
+		const {chatId, timestamp, recipientIds} = request;
+		for (const recipient of recipientIds) {
+			handle_group_join(client, chatId, timestamp, recipient, getVolunteer()).then();
+		}
 	});
 
 	client.on('disconnected', (reason) => {
@@ -65,37 +73,51 @@ async function start() {
 }
 
 async function handle_membership_request(client, chatId, timestamp, author) {
-	const {name: current_name, phone: current_number} = await getCurrent();
+	const volunteer = await getVolunteer();
 	const chat = await client.getChatById(chatId);
 	const date = new Date(timestamp * 1000);
-	// await addToSheet(current_name, current_number, chat.name, date.toLocaleDateString(), author);
+	// await addToSheet(volunteerName, volunteerNumber, chat.name, date.toLocaleDateString(), author);
+	await addToWaitingList({
+		chatName: chat.name,
+		date,
+		phoneNumber: author.replace(/\D/g, ''),
+		associatedVolunteer: volunteer
+	});
 
 	console.log('handle_membership_request', {
-		current_name,
-		current_number,
-		chat_name: chat.name,
-		date: date.toLocaleDateString({timeZone: 'Asia/Jerusalem'}),
-		author
+		volunteerName: volunteer.name,
+		volunteerNumber: volunteer.phone,
+		chatName: chat.name,
+		date: date,
+		phoneNumber: author.replace(/\D/g, '')
 	});
 
 	const message = messageBase
-		.replace('MANAGER_NAME', current_name)
-		.replace('PHONE_NUMBER', current_number);
+		.replace('MANAGER_NAME', volunteer.name)
+		.replace('PHONE_NUMBER', volunteer.phone);
 
 	await client.sendMessage(author, message);
 
-	const current_number_id = current_number.replace(/\D/g, '') + '@c.us';
+	const current_number_id = volunteer.phone.replace(/\D/g, '') + '@c.us';
 	await client.sendMessage(current_number_id, `+${author.replace(/\D/g, '')} - ${chat.id._serialized}`)
 }
 
-async function handle_group_join(client, chatId, timestamp, author) {
-	// const date = new Date(timestamp * 1000);
-	// await removeFromSheet(author, date.toLocaleDateString());
-	console.log('handle_group_join', author);
+async function handle_group_join(client, chatId, timestamp, recipient, associatedVolunteer) {
+	const date = new Date(timestamp * 1000);
+	const chat = await client.getChatById(chatId);
+	// await removeFromSheet(recipient, date.toLocaleDateString());
+	await addUser({
+		phoneNumber: recipient.replace(/\D/g, ''),
+		date,
+		action: 'הצטרף',
+		chatName: chat.name,
+		associatedVolunteer
+	});
+	console.log('handle_group_join', recipient);
 }
 
 async function handle_message(client, message) {
-	if (vulentirs.map(raw => raw.phone.replace(/\D/g, '') + '@c.us').includes(message.from)) {
+	if (volunteers.map(raw => raw.phone.replace(/\D/g, '') + '@c.us').includes(message.from)) {
 		if (message.hasQuotedMsg) {
 			const quotedMessage = await message.getQuotedMessage();
 			const data = quotedMessage.body.split(' - ');
@@ -120,9 +142,9 @@ async function handle_message(client, message) {
 	}
 }
 
-async function getCurrent() {
-	const id = counter % vulentirs.length;
-	return vulentirs[id];
+async function getVolunteer() {
+	const id = counter % volunteers.length;
+	return volunteers[id];
 }
 
 start().then();
