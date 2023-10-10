@@ -51,6 +51,10 @@ async function start() {
 		qrcode.generate(qr, {small: true});
 	});
 
+	client.on('loading_screen', (progressValue, message) => {
+		console.log('Login progress:', progressValue, 'Message:', message);
+	});
+
 	client.on('authenticated', () => {
 		console.log('AUTHENTICATED');
 	});
