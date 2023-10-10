@@ -60,7 +60,7 @@ async function start() {
 		await dialog.dismiss()
 	});
 
-	client.on('error', (event) => {
+	client.on('error', () => {
 		client.destroy().then(() => client.initialize());
 		console.log('Page error... Client is ready again!');
 	});
@@ -116,12 +116,12 @@ async function handle_ready(client) {
 	}, 1000 * 60 * 10);
 	for (const chatId of groupsIds) {
 		const chat = await client.getChatById(chatId);
-		let [allPendingFromSheet, fullData] = await getAllPendingFromSheet(chat.name);
+		let [, fullData] = await getAllPendingFromSheet(chat.name);
 
 		const pendingRequests = await chat.getGroupMembershipRequests();
 		console.log('pendingRequests', pendingRequests);
 
-		const fixPendingFromSheet = fullData.filter(({phone}) => {
+		fullData.forEach(({phone}) => {
 			let action;
 			if (chat.participants.find(p => p.id.user === phone)) {
 				 action = 'הצטרפות';
@@ -131,9 +131,7 @@ async function handle_ready(client) {
 			}
 			if (action) {
 				handle_group_join(client, chatId, new Date(), phone, action).then();
-				return false;
 			}
-			return true;
 	});
 
 		for (const request of pendingRequests) {
@@ -184,7 +182,7 @@ async function handle_membership_request(client, chatId, timestamp, requestedUse
 
 	let volunteer
 	while (!volunteer) {
-		volunteer = await getVolunteer(client, fullData);
+		volunteer = await getVolunteer(client);
 		if (!volunteer) {
 			await new Promise(resolve => setTimeout(resolve, 20 * 1000));
 		}
@@ -250,7 +248,8 @@ async function handle_poll_vote(client, vote) {
 	const chat = await client.getChatById(chatId);
 	let replyMessage = 'הפעולה בוצעה בהצלחה';
 	if (selectedOption.name === PollOptions.APPROVE) {
-		const result = await client.approveGroupMembershipRequests(chatId, { requesterIds: [userId] })
+		// FIXME - check the response
+		await client.approveGroupMembershipRequests(chatId, { requesterIds: [userId] })
 		replyMessage = approveMessage;
 	}
 	else {
@@ -264,7 +263,7 @@ async function handle_poll_vote(client, vote) {
 		await addUser({
 			phoneNumber: userId.replace(/\D/g, ''),
 			date,
-			action: 'נדחה',
+			action,
 			chatName: chat.name,
 			associatedVolunteer: volunteer
 		});
@@ -274,15 +273,13 @@ async function handle_poll_vote(client, vote) {
 
 }
 
-async function getVolunteer(client, fullSheetData) {
+async function getVolunteer(client) {
 	let index = counter % volunteers.length;
 	counter++;
 
 	const volunteer =  volunteers[index];
 	const chat = await client.getChatById(volunteer.phone + '@c.us');
 	const lastMessages = await chat.fetchMessages({limit: 5});
-
-	const pendingRequestsOfVolunteer = fullSheetData.filter((data) => data.volunteerPhone === volunteer.phone);
 
 	if (lastMessages.length === 0) {
 		return volunteer;
