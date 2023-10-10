@@ -49,7 +49,7 @@ async function updateSheet(resource, sheetName) {
 }
 
 
-async function delSheet(phoneNumber, sheetName) {
+async function delSheet(phoneNumber, sheetName, sheetId) {
 	const auth = oAuth2Client;
 	const sheets = google.sheets({
 		version: 'v4',
@@ -78,11 +78,24 @@ async function delSheet(phoneNumber, sheetName) {
 			index++;
 		}
 
+		const requests = [{
+			"deleteDimension": {
+				"range": {
+					"sheetId": sheetId,
+					"dimension": "ROWS",
+					"startIndex": rowIndexToDelete,
+					"endIndex": rowIndexToDelete + 1
+				}
+			}
+		}];
+
 
 		if (found) {
-			const response = await sheets.spreadsheets.values.clear({
+			const response = await sheets.spreadsheets.batchUpdate({
 				spreadsheetId,
-				range: `${sheetName}!A${rowIndexToDelete + 1}:Z${rowIndexToDelete + 1}`,
+				resource: {
+					requests
+				}
 			});
 			console.log(`Phone number ${phoneNumber} found and row deleted. ${response.data.clearedRange} cleared.`);
 		} else {
@@ -140,7 +153,7 @@ async function addToWaitingList({ associatedVolunteer, chatName, date, phoneNumb
 //Enter a cell phone number
 
 async function addUser({ associatedVolunteer, chatName, date, phoneNumber, action}) {
-	const data = await delSheet(phoneNumber, "logWithChanges")
+	const data = await delSheet(phoneNumber, 'logWithChanges',1927733551)
 	console.log(data);
 	const resource = {values: [[chatName, phoneNumber, date, associatedVolunteer?.phone, associatedVolunteer?.name, action]]};
 	await updateSheet(resource, "log")
