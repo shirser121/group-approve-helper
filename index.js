@@ -23,6 +23,10 @@ const PollOptions = {
 
 
 async function start() {
+	let browserPath;
+	try {
+		browserPath = await locateChrome();
+	} catch (err) {}
 	const client = new Client({
 		puppeteer: {
 			headless: false,
@@ -32,7 +36,7 @@ async function start() {
 			],
 			defaultViewport: null,
 			font: 'Arial, "Noto Sans Hebrew", "Noto Sans", sans-serif',
-			executablePath: await locateChrome()
+			executablePath: browserPath
 		},
 		authStrategy: new LocalAuth(
 			{
