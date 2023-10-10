@@ -164,11 +164,32 @@ async function getAllVolunteers() {
 	return fixedVolunteers;
 }
 
+async function getAllWaitingList() {
+	const waitingList = await getAllDataFromSheet("logWithChanges")
+	if (waitingList.length === 0) {
+		return {}
+	}
+
+	const fixedWaitingList = waitingList.slice(1).map(waiting => {
+		return {
+			groupName: waiting[0],
+			phone: waiting[1],
+			date: new Date(waiting[2]),
+			volunteerPhone: waiting[3],
+			volunteerName: waiting[4],
+			action: waiting[5],
+		}
+	});
+
+	return fixedWaitingList;
+}
+
 
 module.exports = {
 	getAllVolunteers,
 	addUser,
-	addToWaitingList
+	addToWaitingList,
+	getAllWaitingList
 }
 
 
