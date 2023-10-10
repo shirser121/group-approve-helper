@@ -8,6 +8,9 @@ const groupsIds = JSON.parse(fs.readFileSync('./files/groupsIds.json', 'utf8')).
 let volunteersReminderMessage = fs.readFileSync('./files/volunteersReminderMessage.txt', 'utf8');
 let volunteersAlertMessage = fs.readFileSync('./files/volunteersAlertMessage.txt', 'utf8');
 let volunteerNewRequestMessage = fs.readFileSync('./files/informMessageNewRequest.txt', 'utf8');
+const notRespondMessage = fs.readFileSync('./files/notRespondMessage.txt', 'utf8');
+const approveMessage = fs.readFileSync('./files/approveMessage.txt', 'utf8');
+
 
 let counter = 0;
 let volunteers;
@@ -103,43 +106,71 @@ async function start() {
 }
 
 async function handle_ready(client) {
+	setTimeout(() => {
+		handle_ready(client).then();
+	}, 1000 * 60 * 10);
 	for (const chatId of groupsIds) {
 		const chat = await client.getChatById(chatId);
-		const pendingRequests = await chat.getGroupMembershipRequests();
-		const [allPendingFromSheet, ] = await getAllPendingFromSheet(chat.name);
-		const filteredPending = pendingRequests.filter((request) => {
-			return !allPendingFromSheet.includes(request.id.user);
-		});
+		let [allPendingFromSheet, fullData] = await getAllPendingFromSheet(chat.name);
 
-		for (const request of filteredPending) {
-			await handle_membership_request(client, chatId, request.t, request.id._serialized);
+		const pendingRequests = await chat.getGroupMembershipRequests();
+
+		const fixPendingFromSheet = fullData.filter(({phone}) => {
+			let action;
+			if (chat.participants.find(p => p.id.user === phone)) {
+				 action = 'הצטרפות';
+			}
+			else if(!pendingRequests.find((request) => request.id.user === phone)) {
+				action = 'הסרת בקשה';
+			}
+			if (action) {
+				handle_membership_request(client, chatId, new Date(), phone, action).then();
+				return false;
+			}
+			return true;
+	});
+
+		for (const request of pendingRequests.concat(fixPendingFromSheet)) {
+			handle_membership_request(client, chatId, new Date(), request?.id?._serialized || request.phone).then();
 		}
 	}
 }
 
-async function handle_membership_request(client, chatId, timestamp, author) {
+async function handle_membership_request(client, chatId, timestamp, requestedUserId) {
 	const chat = await client.getChatById(chatId);
 	const date = new Date(timestamp * 1000);
+	const requestedUserPhone = requestedUserId.replace(/\D/g, '');
+
+
+	volunteers = await getAllVolunteers();
 
 	const [allPendingFromSheet, fullData] = await getAllPendingFromSheet(chat.name);
-	if (allPendingFromSheet.includes(author)) {
-		const rawData = fullData.find((data) => data.phone === author);
+	if (allPendingFromSheet.includes(requestedUserPhone)) {
+		const rawData = fullData.find((data) => data.phone === requestedUserPhone);
 		const date = new Date();
 		if (rawData) {
-			// If date before 35 minutes ago
-			if (rawData.date < (date - 35 * 60 * 1000)) {
+			let action;
+			if (rawData.date < (date - 15 * 60 * 1000)) {
+				action = 'רענון בקשה';
+				await client.sendMessage(rawData.volunteerPhone + '@c.us', volunteersAlertMessage);
+			}
+			else if (!volunteers.find((volunteer) => volunteer.phone === rawData.volunteerPhone)) {
+				action = 'רענון בקשה עקב החלפת משמרת';
+			}
+
+			if (action) {
 				await addUser({
 					date: new Date(),
 					chatName: chat.name,
-					phoneNumber: author.replace(/\D/g, ''),
+					phoneNumber: requestedUserPhone,
 					associatedVolunteer: {
 						name: rawData.volunteerName,
 						phone: rawData.volunteerNumber
 					},
-					action: 'רענון בקשה'
+					action
 				});
 			}
-			else if (rawData.date < date - 30 * 60 * 1000) {
+			else {
 				return;
 			}
 		}
@@ -147,15 +178,16 @@ async function handle_membership_request(client, chatId, timestamp, author) {
 
 	let volunteer
 	while (!volunteer) {
-		volunteer = await getVolunteer(client);
+		volunteer = await getVolunteer(client, fullData);
 		if (!volunteer) {
 			await new Promise(resolve => setTimeout(resolve, 20 * 1000));
 		}
 	}
+
 	await addToWaitingList({
 		chatName: chat.name,
 		date,
-		phoneNumber: author.replace(/\D/g, ''),
+		phoneNumber: requestedUserPhone,
 		associatedVolunteer: volunteer
 	});
 
@@ -164,35 +196,35 @@ async function handle_membership_request(client, chatId, timestamp, author) {
 		volunteerNumber: volunteer.phone,
 		chatName: chat.name,
 		date: date,
-		phoneNumber: author.replace(/\D/g, '')
+		phoneNumber: requestedUserPhone
 	});
 
 	const message = fs.readFileSync('./files/message.txt', 'utf8')
 		.replace('MANAGER_NAME', volunteer.name)
 		.replace('PHONE_NUMBER', volunteer.phone);
 
-	await client.sendMessage(author, message);
+	await client.sendMessage(requestedUserId, message);
 
 	const current_number_id = volunteer.phone.replace(/\D/g, '') + '@c.us';
 
 	const messageForNewRequest = volunteerNewRequestMessage
-		.replace('PHONE_NUMBER', author.replace(/\D/g, ''))
+		.replace('PHONE_NUMBER', requestedUserPhone)
 		.replace('CHAT_NAME', chat.name)
 		.replace('chatId', chatId)
-		.replace('author', author);
+		.replace('author', requestedUserId);
 
 	const poll = new Poll(messageForNewRequest, [PollOptions.APPROVE, PollOptions.DENY, PollOptions.NOT_ANSWERED], {allowMultipleAnswers: false});
 	await client.sendMessage(current_number_id, poll);
 }
 
-async function handle_group_join(client, chatId, timestamp, recipient) {
+async function handle_group_join(client, chatId, timestamp, recipient, action='הצטרף') {
 	const date = new Date(timestamp * 1000);
 	const chat = await client.getChatById(chatId);
 	// await removeFromSheet(recipient, date.toLocaleDateString());
 	await addUser({
 		phoneNumber: recipient.replace(/\D/g, ''),
 		date,
-		action: 'הצטרף',
+		action,
 		chatName: chat.name,
 	});
 	console.log('handle_group_join', recipient);
@@ -210,11 +242,19 @@ async function handle_poll_vote(client, vote) {
 	const date = new Date(senderTimestampMs * 1000);
 
 	const chat = await client.getChatById(chatId);
+	let replyMessage = 'הפעולה בוצעה בהצלחה';
 	if (selectedOption.name === PollOptions.APPROVE) {
 		await client.approveGroupMembershipRequests(chatId, { requesterIds: [userId] })
+		replyMessage = approveMessage;
 	}
-	if (selectedOption.name === PollOptions.DENY) {
-		await client.rejectGroupMembershipRequests(chatId, { requesterIds: [userId] })
+	else {
+		await client.rejectGroupMembershipRequests(chatId, {requesterIds: [userId]})
+		let action = 'נדחה';
+		if (selectedOption.name === PollOptions.NOT_ANSWERED) {
+			action = 'לא הגיב';
+			const link = 'https://chat.whatsapp.com/' + await chat.getInviteCode();
+			await client.sendMessage(userId, notRespondMessage + link);
+		}
 		await addUser({
 			phoneNumber: userId.replace(/\D/g, ''),
 			date,
@@ -222,49 +262,57 @@ async function handle_poll_vote(client, vote) {
 			chatName: chat.name,
 			associatedVolunteer: volunteer
 		});
-
 	}
+
+	await parentMessage.reply(replyMessage.replace('PHONE_NUMBER', userId.replace(/\D/g, '')));
+
 }
 
-async function getVolunteer(client) {
-	volunteers = await getAllVolunteers();
+async function getVolunteer(client, fullSheetData) {
 	let index = counter % volunteers.length;
 	counter++;
 
 	const volunteer =  volunteers[index];
 	const chat = await client.getChatById(volunteer.phone + '@c.us');
 	const lastMessages = await chat.fetchMessages({limit: 5});
+
+	const pendingRequestsOfVolunteer = fullSheetData.filter((data) => data.volunteerPhone === volunteer.phone);
+
 	if (lastMessages.length === 0) {
 		return volunteer;
 	}
 	else {
 		lastMessages.reverse();
 		const lastPoll = lastMessages.find(message => message.type === 'poll_creation');
-		const lastMessage = lastMessages[0];
 		const [chatId, userId] = getDataFromPoll(lastPoll);
 
-		if (userId) {
-			const group = await client.getChatById(chatId);
-			const groupParticipants = group.participants.map(participant => participant.id._serialized);
+		const lastMessage = lastMessages[0];
 
-			if (await isPollAnswered(client, lastPoll.id._serialized) || !lastMessage.fromMe) {
+		if (userId) {
+			if (!lastMessage.fromMe || await isPollAnswered(client, lastPoll.id._serialized)) {
 				return volunteer;
 			}
-			else if (lastPoll.timestamp * 1000 < Date.now() - 1000 * 60 * 35 /* 35 minutes */) {
+			else if (lastPoll.date < Date.now() - 1000 * 60 * 10 /* 10 minutes */) {
 				if (lastMessage.body !== volunteersAlertMessage) {
 					await client.sendMessage(volunteer.phone + '@c.us', volunteersReminderMessage)
+				// 	TODO Send Message to admin
 				}
-				if (!groupParticipants.includes(userId)) {
-					handle_membership_request(client, chatId, lastPoll.timestamp, userId).then();
+
+				const group = await client.getChatById(chatId);
+				const alreadyParticipant = group.participants.find(participant => participant.id._serialized === userId);
+
+				if (!alreadyParticipant) {
+					handle_membership_request(client, chatId, new Date(), userId).then();
 				}
 			}
-			else if (lastMessage.timestamp * 1000 < Date.now() - 1000 * 60 * 10 /* 10 minutes */) {
+			else if (lastMessage.timestamp * 1000 < Date.now() - 1000 * 60 * 5 /* 5 minutes */) {
 				await client.sendMessage(volunteer.phone + '@c.us', volunteersReminderMessage);
 			}
 		} else {
 			return volunteer;
 		}
 	}
+	return undefined;
 }
 
 async function getAllPendingFromSheet(groupName) {
