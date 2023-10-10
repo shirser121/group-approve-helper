@@ -108,12 +108,14 @@ async function start() {
 async function handle_ready(client) {
 	setTimeout(() => {
 		handle_ready(client).then();
+		console.log('run after 10 minutes')
 	}, 1000 * 60 * 10);
 	for (const chatId of groupsIds) {
 		const chat = await client.getChatById(chatId);
 		let [allPendingFromSheet, fullData] = await getAllPendingFromSheet(chat.name);
 
 		const pendingRequests = await chat.getGroupMembershipRequests();
+		console.log('pendingRequests', pendingRequests);
 
 		const fixPendingFromSheet = fullData.filter(({phone}) => {
 			let action;
@@ -124,14 +126,14 @@ async function handle_ready(client) {
 				action = 'הסרת בקשה';
 			}
 			if (action) {
-				handle_membership_request(client, chatId, new Date(), phone, action).then();
+				handle_group_join(client, chatId, new Date(), phone, action).then();
 				return false;
 			}
 			return true;
 	});
 
-		for (const request of pendingRequests.concat(fixPendingFromSheet)) {
-			handle_membership_request(client, chatId, new Date(), request?.id?._serialized || request.phone).then();
+		for (const request of pendingRequests) {
+			await handle_membership_request(client, chatId, new Date(), request.id._serialized);
 		}
 	}
 }
@@ -201,14 +203,14 @@ async function handle_membership_request(client, chatId, timestamp, requestedUse
 
 	const message = fs.readFileSync('./files/message.txt', 'utf8')
 		.replace('MANAGER_NAME', volunteer.name)
-		.replace('PHONE_NUMBER', volunteer.phone);
+		.replace('PHONE_NUMBER', `+${volunteer.phone}`);
 
 	await client.sendMessage(requestedUserId, message);
 
 	const current_number_id = volunteer.phone.replace(/\D/g, '') + '@c.us';
 
 	const messageForNewRequest = volunteerNewRequestMessage
-		.replace('PHONE_NUMBER', requestedUserPhone)
+		.replace('PHONE_NUMBER', `+${requestedUserPhone}`)
 		.replace('CHAT_NAME', chat.name)
 		.replace('chatId', chatId)
 		.replace('author', requestedUserId);
@@ -244,7 +246,7 @@ async function handle_poll_vote(client, vote) {
 	const chat = await client.getChatById(chatId);
 	let replyMessage = 'הפעולה בוצעה בהצלחה';
 	if (selectedOption.name === PollOptions.APPROVE) {
-		await client.approveGroupMembershipRequests(chatId, { requesterIds: [userId] })
+		const result = await client.approveGroupMembershipRequests(chatId, { requesterIds: [userId] })
 		replyMessage = approveMessage;
 	}
 	else {
@@ -292,11 +294,12 @@ async function getVolunteer(client, fullSheetData) {
 			if (!lastMessage.fromMe || await isPollAnswered(client, lastPoll.id._serialized)) {
 				return volunteer;
 			}
-			else if (lastPoll.date < Date.now() - 1000 * 60 * 10 /* 10 minutes */) {
-				if (lastMessage.body !== volunteersAlertMessage) {
-					await client.sendMessage(volunteer.phone + '@c.us', volunteersReminderMessage)
+			else if(lastMessage.body === volunteersAlertMessage) {
+				return;
+			}
+			else if (lastPoll.timestamp * 1000 < Date.now() - 1000 * 60 * 10 /* 10 minutes */) {
+				await client.sendMessage(volunteer.phone + '@c.us', volunteersAlertMessage)
 				// 	TODO Send Message to admin
-				}
 
 				const group = await client.getChatById(chatId);
 				const alreadyParticipant = group.participants.find(participant => participant.id._serialized === userId);
@@ -305,7 +308,7 @@ async function getVolunteer(client, fullSheetData) {
 					handle_membership_request(client, chatId, new Date(), userId).then();
 				}
 			}
-			else if (lastMessage.timestamp * 1000 < Date.now() - 1000 * 60 * 5 /* 5 minutes */) {
+			else if (lastMessage.timestamp * 1000 < Date.now() - 1000 * 60 * 3 /* 3 minutes */) {
 				await client.sendMessage(volunteer.phone + '@c.us', volunteersReminderMessage);
 			}
 		} else {
