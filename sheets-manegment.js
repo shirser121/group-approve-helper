@@ -105,7 +105,7 @@ async function getAllDataFromSheet(sheetName) {
 	try {
 		const response = await sheets.spreadsheets.values.get({
 			spreadsheetId,
-			range: `${sheetName}!A:B`, // Assuming you want to retrieve all columns (A-Z)
+			range: `${sheetName}!A:F`, // Assuming you want to retrieve all columns (A-Z)
 		});
 
 		const values = response.data.values;
@@ -142,7 +142,7 @@ async function addToWaitingList({ associatedVolunteer, chatName, date, phoneNumb
 async function addUser({ associatedVolunteer, chatName, date, phoneNumber, action}) {
 	const data = await delSheet(phoneNumber, "logWithChanges")
 	console.log(data);
-	const resource = {values: [[chatName, phoneNumber, date, associatedVolunteer.phone, associatedVolunteer.name, action]]};
+	const resource = {values: [[chatName, phoneNumber, date, associatedVolunteer?.phone, associatedVolunteer?.name, action]]};
 	await updateSheet(resource, "log")
 }
 
