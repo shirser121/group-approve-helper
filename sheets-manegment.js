@@ -142,7 +142,7 @@ async function getAllDataFromSheet(sheetName) {
 
 async function addToWaitingList({ associatedVolunteer, chatName, date, phoneNumber }) {
 	const action = 'בקשת הצטרפות';
-	const resource = {values: [[chatName, phoneNumber, date, associatedVolunteer.phone, associatedVolunteer.name, action]]};
+	const resource = {values: [[chatName, phoneNumber, new Date(), associatedVolunteer.phone, associatedVolunteer.name, action]]};
 	await updateSheet(resource, "log")
 	await updateSheet(resource, "logWithChanges")
 }
@@ -155,7 +155,7 @@ async function addToWaitingList({ associatedVolunteer, chatName, date, phoneNumb
 async function addUser({ associatedVolunteer, chatName, date, phoneNumber, action}) {
 	const data = await delSheet(phoneNumber, 'logWithChanges',1927733551)
 	console.log(data);
-	const resource = {values: [[chatName, phoneNumber, date, associatedVolunteer?.phone, associatedVolunteer?.name, action]]};
+	const resource = {values: [[chatName, phoneNumber, new Date(), associatedVolunteer?.phone, associatedVolunteer?.name, action]]};
 	await updateSheet(resource, "log")
 }
 
