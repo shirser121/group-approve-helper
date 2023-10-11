@@ -8,3 +8,5 @@ package-lock.json
 /files/credentials.json
 /files/token.json
 /test.js
+/mermaid/
+/files/groupsIds.json
